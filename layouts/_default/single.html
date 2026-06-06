@@ -1,0 +1,16 @@
+{{ define "main" }}
+  <div class="job-detail">
+    <h1>{{ .Title }}</h1>
+    <div class="meta">
+      <span>{{ .Params.department }}</span>
+      <span>{{ .Params.location }}</span>
+      <span class="badge">{{ .Params.employment_type }}</span>
+    </div>
+
+    {{ .Content }}
+
+    <a href="mailto:{{ .Site.Params.contact_email }}?subject=Bewerbung: {{ .Title }}" class="apply-btn">
+      Jetzt bewerben
+    </a>
+  </div>
+{{ end }}

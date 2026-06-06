@@ -1,0 +1,21 @@
+baseURL = "https://karriere.seraph-it.de"
+languageCode = "de-DE"
+defaultContentLanguage = "de"
+title = "Karriere bei Seraph IT"
+
+[params]
+  description = "Offene Stellen bei Seraph IT — IT-Managed-Service-Provider aus Düsseldorf. Remote-first, DSGVO-konform, nachhaltig."
+  company = "Seraph IT GmbH"
+  company_url = "https://www.seraph-it.de"
+  contact_email = "jobs@seraph-it.de"
+  location = "Düsseldorf / Remote"
+  tagline = "Wir bauen resiliente IT — komm ins Team."
+
+[taxonomies]
+  department = "departments"
+  employment_type = "employment_types"
+
+[markup]
+  [markup.goldmark]
+    [markup.goldmark.renderer]
+      unsafe = false

@@ -1,0 +1,18 @@
+{{ define "main" }}
+  <h1 class="page-title">Alle Stellen</h1>
+  <p class="page-subtitle">{{ .Site.Params.description }}</p>
+
+  <div class="job-list">
+    {{ range .Pages }}
+    <div class="job-card">
+      <h2><a href="{{ .Permalink }}">{{ .Title }}</a></h2>
+      <div class="job-meta">
+        <span>{{ .Params.department }}</span>
+        <span>{{ .Params.location }}</span>
+        <span class="badge">{{ .Params.employment_type }}</span>
+        {{ if eq .Params.status "Active" }}<span class="badge">Offen</span>{{ end }}
+      </div>
+    </div>
+    {{ end }}
+  </div>
+{{ end }}
