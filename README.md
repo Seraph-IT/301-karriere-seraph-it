@@ -1,4 +1,4 @@
-# 34-karriere-seraph-it
+# 301-karriere-seraph-it
 
 Career site for Seraph IT — built with Hugo.
 
@@ -21,7 +21,7 @@ hugo --minify
 
 ## Integration
 
-Job Postings are exported from ERPNext (`14-erpnext-SeraphIT`) via the
+Job Postings are exported from ERPNext (`420-erpnext-SeraphIT`) via the
 `Job Posting Render` Doctype. Each render generates Hugo-compatible
 Markdown with YAML frontmatter.
 
@@ -37,6 +37,6 @@ Config: `Career Site Setting` Singleton in recruiting_extension.
 
 ## Cross-Repo
 
-- **06-network-baselines**: TLS-Cert pre-ping (Sprint-3)
-- **19-gitea**: Reverse-Proxy pre-ping (Sprint-3)
-- **14-erpnext-SeraphIT**: recruiting_extension integration
+- **020-network-baselines**: TLS-Cert pre-ping (Sprint-3)
+- **042-gitea**: Reverse-Proxy pre-ping (Sprint-3)
+- **420-erpnext-SeraphIT**: recruiting_extension integration
