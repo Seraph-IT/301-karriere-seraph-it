@@ -40,10 +40,12 @@ jobs:
         run: |
           # Ab 8.19 heisst der Befehl `git`, davor `detect`.
           if gitleaks git --help >/dev/null 2>&1; then
-            gitleaks git --no-banner --redact --exit-code 1 .
+            gitleaks git --log-opts=HEAD --no-banner --redact --exit-code 1 .
           else
-            gitleaks detect --source . --no-banner --redact --exit-code 1
+            gitleaks detect --log-opts=HEAD --source . --no-banner --redact --exit-code 1
           fi
+      - name: gitleaks rule test (Keeper UID rule, HEAD-only scan)
+        run: GITLEAKS="gitleaks" bash tests/gitleaks/test-gitleaks-rules.sh
 
   toml:
     name: Hugo-Konfiguration
