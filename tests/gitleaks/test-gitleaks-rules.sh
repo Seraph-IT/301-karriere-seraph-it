@@ -5,7 +5,8 @@
 #   1. Real secret patterns still fire: GitHub PAT, AWS access key, private key block,
 #      generic-api-key behind "token:" (40 and 22 characters) and behind "password:".
 #   2. A Keeper record UID (exactly 22 characters [A-Za-z0-9_-]) directly behind a key
-#      ending in _UID or _uid does not fire, in YAML, shell, Python and JSON.
+#      ending in _uid in any case (_UID, _uid, _Uid) does not fire, in YAML, shell, Python
+#      and JSON. A real token pattern behind such a key (40 characters, ghp_ prefix) still fires.
 #   3. Counter-check: without the "keeper-uid-allowlist" block the same UIDs fire.
 #   4. The history scan only covers HEAD and its ancestors: a finding on another branch
 #      stays silent with --log-opts=HEAD, fires once it is on HEAD, and the old default
@@ -70,6 +71,8 @@ mk "$F/token40.yml"      "token: ${TOK40}"
 mk "$F/token22.yml"      "token: ${TOK22}"
 mk "$F/password22.yml"   "password: ${TOK22}"
 mk "$F/uid23.yml"        "svc_token_uid: ${UID23}"
+mk "$F/uid_ghp.yml"      "psk_keeper_uid: ${GHP}"
+mk "$F/uid_tok40.yml"    "svc_token_uid: ${TOK40}"
 # must stay silent
 mk "$F/foo_uid.yml"      "FOO_UID: ${UID22}"
 mk "$F/uid_yaml.yml"     "svc_token_uid: ${UID22}"
@@ -77,10 +80,12 @@ mk "$F/uid_yamlq.yml"    "GITEA_TOKEN_UID: \"${UID22}\""
 mk "$F/uid_shell.sh"     "export API_KEY_UID='${UID22}'"
 mk "$F/uid_python.py"    "SECRET_UID = \"${UID22}\""
 mk "$F/uid_json.json"    "{\"ksm_token_uid\": \"${UID22}\"}"
+mk "$F/uid_psk.yml"      "    psk_keeper_uid: \"${UID22}\"   # IT/Kunden/x/zabbix/agent-psk-x"
+mk "$F/uid_mixed.yml"    "Svc_Token_Uid: ${UID22}"
 
 R="$TMP/with.json"
 scan_dir "$F" "$CONFIG" "$R"
-for f in ghp.yml aws.sh key.pem token40.yml token22.yml password22.yml uid23.yml; do
+for f in ghp.yml aws.sh key.pem token40.yml token22.yml password22.yml uid23.yml uid_ghp.yml uid_tok40.yml; do
   if fired "$R" "$f"; then pass "fires: $f"; else bad "silent but must fire: $f"; fi
 done
 # GITLEAKS_UID_RULE=absent is only for a repository whose config cannot take the UID block
@@ -92,7 +97,7 @@ if [ "${GITLEAKS_UID_RULE:-}" = absent ]; then
     echo "skip UID cases: GITLEAKS_UID_RULE=absent (no keeper-uid-allowlist block yet)"
   fi
 else
-  for f in foo_uid.yml uid_yaml.yml uid_yamlq.yml uid_shell.sh uid_python.py uid_json.json; do
+  for f in foo_uid.yml uid_yaml.yml uid_yamlq.yml uid_shell.sh uid_python.py uid_json.json uid_psk.yml uid_mixed.yml; do
     if fired "$R" "$f"; then bad "fires but must stay silent: $f"; else pass "silent: $f"; fi
   done
 fi
@@ -106,7 +111,7 @@ else
   sed '/^# BEGIN keeper-uid-allowlist/,/^# END keeper-uid-allowlist/d' "$CONFIG" > "$TMP/without.toml"
   R2="$TMP/without.json"
   scan_dir "$F" "$TMP/without.toml" "$R2"
-  for f in uid_yaml.yml uid_yamlq.yml uid_shell.sh uid_python.py uid_json.json; do
+  for f in uid_yaml.yml uid_yamlq.yml uid_shell.sh uid_python.py uid_json.json uid_mixed.yml; do
     if fired "$R2" "$f"; then pass "counter-check fires without block: $f"; else bad "counter-check silent without block: $f"; fi
   done
 fi

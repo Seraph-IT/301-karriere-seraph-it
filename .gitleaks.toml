@@ -3,11 +3,12 @@ useDefault = true
 
 # BEGIN keeper-uid-allowlist
 # Keeper record UIDs are references to a vault entry, not secrets. Allowed is exactly one
-# value of 22 characters [A-Za-z0-9_-] directly behind a key ending in _UID or _uid
+# value of 22 characters [A-Za-z0-9_-] directly behind a key ending in _uid, in any case
+# (_UID, _uid, _Uid; case-insensitive since 17.11.2026)
 # (YAML, shell, Python, JSON, quoted or not). Nothing else. Every other rule stays as is.
 # Test: tests/gitleaks/test-gitleaks-rules.sh
 [allowlist]
-description = "Keeper record UID behind *_UID / *_uid (reference, not a secret)"
+description = "Keeper record UID behind *_uid in any case (reference, not a secret)"
 regexTarget = "match"
-regexes = ['''(?:_UID|_uid)['"]?[ \t]{0,3}(?:=|:=|:|=>)[ \t]{0,5}['"]?[A-Za-z0-9_-]{22}(?:['"`;\s]|\\[nr]|$)''']
+regexes = ['''(?i)_uid['"]?[ \t]{0,3}(?:=|:=|:|=>)[ \t]{0,5}['"]?[A-Za-z0-9_-]{22}(?:['"`;\s]|\\[nr]|$)''']
 # END keeper-uid-allowlist
