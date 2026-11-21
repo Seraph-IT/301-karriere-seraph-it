@@ -3,7 +3,7 @@
 Career site for Seraph IT — built with Hugo.
 
 **Live**: https://karriere.seraph-it.de (Sprint-3+)
-**Preview**: GitHub Pages (Sprint-2 V1)
+**Preview**: none. The repo has no Pages build, and GitHub is only a read mirror of Gitea.
 
 ## Structure
 
@@ -49,8 +49,8 @@ or what is already on the target branch. PRs and main run the same command.
 
 Keeper record UIDs are references to a vault entry, not secrets. `.gitleaks.toml` therefore
 allows exactly one value of 22 characters `[A-Za-z0-9_-]` directly behind a key ending in
-`_UID` or `_uid`. Every other rule is unchanged. Reviewed single findings are kept as
-fingerprints in `.gitleaksignore`.
+`_UID` or `_uid`, in any case. Every other rule is unchanged. This repo has no
+`.gitleaksignore`.
 
 `tests/gitleaks/test-gitleaks-rules.sh` pins this down and runs in the CI gitleaks job:
 GitHub PAT, AWS key, private key and values behind `token:` or `password:` fire, the UID
