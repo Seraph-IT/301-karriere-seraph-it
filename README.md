@@ -27,6 +27,15 @@ Markdown with YAML frontmatter.
 
 Config: `Career Site Setting` Singleton in recruiting_extension.
 
+Since 22.11.2026 `bin/karriere_feed.py` pulls the signed career feed
+(`recruiting_extension.api.career_feed.get_career_feed`, contract v1) into
+`content/jobs/`. Without `--schreiben` it only shows what would change. It writes
+only after the HMAC check (`CAREER_FEED_HMAC_SECRET`, same value as site_config
+`recruiting_career_feed_hmac_secret`, kept in Keeper) and never deletes: jobs that
+leave the feed become `draft: true`. Hand-written files without
+`quelle: "erpnext-feed"` stay untouched. In 420 the feed is off until
+`recruiting_career_feed_enabled` is set.
+
 ## Sprint-2 Stub Jobs
 
 - SOC-Analyst (Umschulung / Quereinstieg)
