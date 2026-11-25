@@ -1,0 +1,40 @@
+---
+# SPDX-License-Identifier: LicenseRef-Seraph-Internal-1.0
+# Duenner Aufrufer der Seraph-Suite. Verteilt mit scripts/suite_verteilen.py zusammen mit der Hub-Kopie
+# seraph-suite-hub.yml im selben Verzeichnis. Von Hand nur `typ` und die optionalen Befehle aendern;
+# scripts/suite_drift.py prueft den Rest.
+#
+# Ablage: .github/workflows/, solange das Repo keine .gitea/workflows hat (Gitea liest nur das erste vorhandene
+# Verzeichnis, .gitea vor .github). Das Verteil-Skript waehlt das Verzeichnis und setzt den Pfad in `uses`.
+#
+# GitHub Actions ist org-weit aus; der Waechter auf server_url verhindert trotzdem jeden Lauf auf github.com.
+name: seraph-suite
+
+# Ausloeser (Hermes 25.11.2026): pull_request, push auf den Standardbranch (main, in 301 master), Zeitplan und Hand. Kein push auf andere Branches mehr,
+# sonst lief die Suite je Branch-Push und noch einmal fuer den PR (Schlange wuchs).
+on:
+  push:
+    branches: [master]
+  pull_request:
+  schedule:
+    - cron: "23 4 * * 1"   # Slot aus 106 ci-templates/nachtlauf.yml
+  workflow_dispatch:
+
+# PRs: ein neuerer Push bricht den aelteren Lauf ab. Auf dem Standardbranch traegt die Gruppe die SHA, dort wird nie
+# abgebrochen.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch || 'main') && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suite:
+    if: github.server_url != 'https://github.com'
+    # Ohne runs-on nimmt jeder Runner den Job, auch der molecule-Runner (Lauf 18232 in 106).
+    runs-on: [self-hosted, gitea-runner]
+    uses: ./.github/workflows/seraph-suite-hub.yml
+    with:
+      typ: web            # python | ansible | frappe | web | terraform | powershell | generisch
+      # lint_befehl: "ruff check ."
+      # test_befehl: "pytest -q"
+      # vorbereitung: "pip install -r requirements-dev.txt"
+    secrets: inherit
