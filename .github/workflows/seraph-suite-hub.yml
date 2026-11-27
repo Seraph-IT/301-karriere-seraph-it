@@ -49,6 +49,14 @@ on:
         description: "Optional: Befehl vor Lint/Test (z.B. pip install -r requirements-dev.txt)."
         type: string
         default: ""
+      tests_begruendung:
+        description: "Ohne test_befehl: warum das Repo nichts hat, was ein Test pruefen kann (mindestens 15 Zeichen)."
+        type: string
+        default: ""
+      tests_in:
+        description: "Ohne test_befehl: Workflow-Datei, in der die Tests laufen, wenn die Erkennung sie nicht sieht."
+        type: string
+        default: ""
       python_version:
         type: string
         default: "3.12"
@@ -101,7 +109,8 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ] && [ -n "${VORHER:-}" ] && [ "${VORHER}" != "${null}" ] \
              && git cat-file -e "${VORHER}^{commit}" 2>/dev/null; then
             ausschluss=" ^${VORHER}"
-          elif git rev-parse -q --verify "origin/${STANDARD}" >/dev/null && [ "${{ github.ref_name }}" != "${STANDARD}" ]; then
+          elif git rev-parse -q --verify "origin/${STANDARD}" >/dev/null \
+               && [ "${{ github.ref_name }}" != "${STANDARD}" ]; then
             # Neuer Branch, Nachtlauf oder manuell auf einem Branch: alles, was nicht auf dem Standardbranch ist.
             ausschluss=" ^origin/${STANDARD}"
           else
@@ -126,7 +135,8 @@ jobs:
           gitleaks git --no-banner --redact --log-opts=HEAD \
             --report-format json --report-path gitleaks-report.json --exit-code 0 .
           test -f gitleaks-report.json
-          jq -e . gitleaks-report.json > /dev/null || { echo "::error::Gitleaks: Bericht ist kein gueltiges JSON"; exit 1; }
+          jq -e . gitleaks-report.json > /dev/null \
+            || { echo "::error::Gitleaks: Bericht ist kein gueltiges JSON"; exit 1; }
           # Marke fuer den DefectDojo-Upload: nur mit ihr werden behobene Funde geschlossen.
           echo ja > gitleaks-report.json.vollstaendig
       - uses: actions/upload-artifact@v3
@@ -143,6 +153,15 @@ jobs:
   sast-semgrep:
     name: SAST (Semgrep)
     runs-on: [self-hosted, gitea-runner]
+    # Image statt pip install in jedem Lauf (Hermes 27.11.2026): das ganze Semgrep ging je Job auf die Docker-Platte,
+    # Anlass fuer Abbrueche an der Aufraeumgrenze auf Run-002/Run-004. ci-security (042 ci-images/security) bringt
+    # Semgrep 1.172.0, dieselbe Version wie bisher; der erste Schritt bricht ab, wenn sie abweicht.
+    container:
+      image: gitea.seraph-it.de/seraph-it/ci-security:2026.11.15-1
+    # Im Container nimmt act sonst sh -e; Run Semgrep braucht bash (Arrays). Lauf 537, 27.11.2026: Syntax error "(".
+    defaults:
+      run:
+        shell: bash
     env:
       # Schalter (Hermes 25.11.2026): die ERROR-Regeln aus javascript-seraph laufen die ersten 7 Tage nach dem Rollout
       # nur als Bericht. Danach die echten Funde je Repo zaehlen, Hermes vorlegen, erst dann "ja".
@@ -152,11 +171,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ inputs.python_version }}
-      - name: Install Semgrep 1.172.0
-        run: python -m pip install --quiet semgrep==1.172.0
+      - name: Semgrep 1.172.0 aus dem Image
+        run: |
+          command -v bash semgrep python3 git
+          v=$(semgrep --version)
+          echo "Semgrep ${v}"
+          [ "${v}" = "1.172.0" ] || { echo "::error::Semgrep ${v} im Image statt 1.172.0"; exit 1; }
       - name: Arbeitsverzeichnis nicht leer
         run: |
           # Hermes 17.11.: ein leerer Arbeitsbereich laesst Scanner ueber 0 Dateien gruen laufen (609 Lauf 16856).
@@ -184,8 +204,9 @@ jobs:
                 owasp: "A07:2021 - Identification and Authentication Failures"
                 seraph_severity: HIGH
               message: |
-                Zweiter Faktor wird fuer eine Kontoart ausgenommen (technisch, Dienst, Service). Solche Konten brauchen entweder 2FA
-                oder keine Passwort-Anmeldung. Entscheidung dokumentieren und die Ausnahme so gegen Passwort-Login sperren:
+                Zweiter Faktor wird fuer eine Kontoart ausgenommen (technisch, Dienst, Service).
+                Solche Konten brauchen entweder 2FA oder keine Passwort-Anmeldung.
+                Entscheidung dokumentieren und die Ausnahme so gegen Passwort-Login sperren:
                 // nosemgrep: javascript-seraph.js-konto-ohne-2fa -- <Entscheidung, Datum>
               pattern-either:
                 - pattern: return !$U.technical
@@ -201,7 +222,8 @@ jobs:
                 cwe: "CWE-390"
                 seraph_severity: MEDIUM
               message: |
-                Leerer catch-Block verschluckt den Fehler. Fehler melden (Log, Meldung an Zabbix/Wazuh) oder bewusst weiterwerfen.
+                Leerer catch-Block verschluckt den Fehler.
+                Fehler melden (Log, Meldung an Zabbix/Wazuh) oder bewusst weiterwerfen.
                 Gewollt verschlucken nur mit Begruendung: // nosemgrep: javascript-seraph.js-leerer-catch -- <Grund>
               pattern-either:
                 - pattern: |
@@ -219,7 +241,8 @@ jobs:
                 category: quality
                 seraph_severity: LOW
               message: |
-                alert, confirm und prompt sind Systemfenster: blockieren Tests, laufen auf Tablets unterschiedlich und sind nicht barrierefrei.
+                alert, confirm und prompt sind Systemfenster: blockieren Tests, laufen auf Tablets unterschiedlich
+                und sind nicht barrierefrei.
                 Eigenen Dialog der Oberflaeche verwenden.
               pattern-either:
                 - pattern: alert(...)
@@ -237,7 +260,8 @@ jobs:
                 cwe: "CWE-460"
                 seraph_severity: MEDIUM
               message: |
-                Transaktion (BEGIN) ohne try/catch mit ROLLBACK im selben Block. Wirft die Arbeit dazwischen, bleibt die Transaktion offen
+                Transaktion (BEGIN) ohne try/catch mit ROLLBACK im selben Block.
+                Wirft die Arbeit dazwischen, bleibt die Transaktion offen
                 oder das Speichern ist halb geschrieben. try { begin; ...; commit } catch { rollback; throw } verwenden.
               patterns:
                 - pattern-either:
@@ -264,7 +288,8 @@ jobs:
           gescannt = len((d.get("paths") or {}).get("scanned") or [])
           schwer = [e for e in d.get("errors") or [] if str(e.get("level", "")).lower() == "error"]
           rc = int(os.environ["SCANNER_RC"])
-          print("Semgrep:", len(d.get("results", [])), "Ergebnisse,", len(d.get("errors", [])), "Fehler,", gescannt, "Dateien, Exit", rc)
+          print("Semgrep:", len(d.get("results", [])), "Ergebnisse,", len(d.get("errors", [])), "Fehler,",
+                gescannt, "Dateien, Exit", rc)
           if gescannt == 0:
               sys.exit("Semgrep hat 0 Dateien gescannt")
           # Fingerprint fuer DefectDojo (Hermes 20.11.2026): Semgrep ohne Login schreibt in jeden Fund "requires login",
@@ -399,12 +424,14 @@ jobs:
           v=0.72.0
           tgz="trivy_${v}_Linux-64bit.tar.gz"
           sha=bbb64b9695866ce4a7a8f5c9592002c5961cab378577fa3f8a040df362b9b2ea
-          [ "$(uname -m)" = x86_64 ] || { echo "::error::Trivy: Runner-Architektur $(uname -m) nicht vorgesehen"; exit 1; }
+          [ "$(uname -m)" = x86_64 ] \
+            || { echo "::error::Trivy: Runner-Architektur $(uname -m) nicht vorgesehen"; exit 1; }
           rc=0
           curl -fsSL --retry 3 --retry-delay 10 --retry-all-errors --connect-timeout 20 --max-time 300 \
             -o "/tmp/${tgz}" "https://github.com/aquasecurity/trivy/releases/download/v${v}/${tgz}" || rc=$?
           [ "${rc}" -eq 0 ] || { echo "::error::Trivy-Download fehlgeschlagen (curl Exit ${rc})"; exit 1; }
-          echo "${sha}  /tmp/${tgz}" | sha256sum -c --quiet - || { echo "::error::Trivy-Pruefsumme passt nicht"; exit 1; }
+          echo "${sha}  /tmp/${tgz}" | sha256sum -c --quiet - \
+            || { echo "::error::Trivy-Pruefsumme passt nicht"; exit 1; }
           tar -xzf "/tmp/${tgz}" -C /usr/local/bin trivy
           trivy --version
       - name: Arbeitsverzeichnis nicht leer
@@ -424,8 +451,10 @@ jobs:
           cat trivy-fs.log >&2
           if [ "${rc}" -eq 124 ]; then echo "::error::Trivy fs: Zeitlimit 15 min (meist Datenbank-Download)"; exit 1; fi
           [ "${rc}" -eq 0 ] || { echo "::error::Trivy fs endete mit Exit ${rc} (Zeilen davor, z.B. FATAL DB)"; exit 1; }
-          [ -s trivy-fs-report.json ] || { echo "::error::Trivy fs: Bericht trivy-fs-report.json fehlt oder ist leer"; exit 1; }
-          jq -e . trivy-fs-report.json > /dev/null || { echo "::error::Trivy fs: Bericht ist kein gueltiges JSON"; exit 1; }
+          [ -s trivy-fs-report.json ] \
+            || { echo "::error::Trivy fs: Bericht trivy-fs-report.json fehlt oder ist leer"; exit 1; }
+          jq -e . trivy-fs-report.json > /dev/null \
+            || { echo "::error::Trivy fs: Bericht ist kein gueltiges JSON"; exit 1; }
           # Marke fuer den DefectDojo-Upload: nur mit ihr werden behobene Funde geschlossen. Uebersprungene
           # Datenbanken oder Dateien (WARN/ERROR ... skipping) heissen: Bericht unvollstaendig. Ausgenommen ist nur
           # "License detection is skipped" (pip ohne site-packages): das betrifft Lizenzen, nicht Schwachstellen
@@ -460,12 +489,14 @@ jobs:
           v=0.72.0
           tgz="trivy_${v}_Linux-64bit.tar.gz"
           sha=bbb64b9695866ce4a7a8f5c9592002c5961cab378577fa3f8a040df362b9b2ea
-          [ "$(uname -m)" = x86_64 ] || { echo "::error::Trivy: Runner-Architektur $(uname -m) nicht vorgesehen"; exit 1; }
+          [ "$(uname -m)" = x86_64 ] \
+            || { echo "::error::Trivy: Runner-Architektur $(uname -m) nicht vorgesehen"; exit 1; }
           rc=0
           curl -fsSL --retry 3 --retry-delay 10 --retry-all-errors --connect-timeout 20 --max-time 300 \
             -o "/tmp/${tgz}" "https://github.com/aquasecurity/trivy/releases/download/v${v}/${tgz}" || rc=$?
           [ "${rc}" -eq 0 ] || { echo "::error::Trivy-Download fehlgeschlagen (curl Exit ${rc})"; exit 1; }
-          echo "${sha}  /tmp/${tgz}" | sha256sum -c --quiet - || { echo "::error::Trivy-Pruefsumme passt nicht"; exit 1; }
+          echo "${sha}  /tmp/${tgz}" | sha256sum -c --quiet - \
+            || { echo "::error::Trivy-Pruefsumme passt nicht"; exit 1; }
           tar -xzf "/tmp/${tgz}" -C /usr/local/bin trivy
           trivy --version
       - name: Arbeitsverzeichnis nicht leer
@@ -482,10 +513,15 @@ jobs:
           timeout 900 trivy config --severity CRITICAL,HIGH \
             --format json --output trivy-config-report.json --exit-code 0 . 2> trivy-config.log || rc=$?
           cat trivy-config.log >&2
-          if [ "${rc}" -eq 124 ]; then echo "::error::Trivy config: Zeitlimit 15 min (meist Datenbank-Download)"; exit 1; fi
-          [ "${rc}" -eq 0 ] || { echo "::error::Trivy config endete mit Exit ${rc} (Zeilen davor, z.B. FATAL DB)"; exit 1; }
-          [ -s trivy-config-report.json ] || { echo "::error::Trivy config: Bericht trivy-config-report.json fehlt oder ist leer"; exit 1; }
-          jq -e . trivy-config-report.json > /dev/null || { echo "::error::Trivy config: Bericht ist kein gueltiges JSON"; exit 1; }
+          if [ "${rc}" -eq 124 ]; then
+            echo "::error::Trivy config: Zeitlimit 15 min (meist Datenbank-Download)"; exit 1
+          fi
+          [ "${rc}" -eq 0 ] \
+            || { echo "::error::Trivy config endete mit Exit ${rc} (Zeilen davor, z.B. FATAL DB)"; exit 1; }
+          [ -s trivy-config-report.json ] \
+            || { echo "::error::Trivy config: Bericht trivy-config-report.json fehlt oder ist leer"; exit 1; }
+          jq -e . trivy-config-report.json > /dev/null \
+            || { echo "::error::Trivy config: Bericht ist kein gueltiges JSON"; exit 1; }
           # Marke fuer den DefectDojo-Upload: nur mit ihr werden behobene Funde geschlossen. Uebersprungene
           # Datenbanken oder Dateien (WARN/ERROR ... skipping) heissen: Bericht unvollstaendig. Ausgenommen ist nur
           # "License detection is skipped" (pip ohne site-packages): das betrifft Lizenzen, nicht Schwachstellen
@@ -566,12 +602,14 @@ jobs:
           v=1.33.0
           tgz="syft_${v}_linux_amd64.tar.gz"
           sha=adc1b944a827ed3432bcd9f1dbdbc8fa3c0dca7d3d449e7084c90248c2c6cb50
-          [ "$(uname -m)" = x86_64 ] || { echo "::error::Syft: Runner-Architektur $(uname -m) nicht vorgesehen"; exit 1; }
+          [ "$(uname -m)" = x86_64 ] \
+            || { echo "::error::Syft: Runner-Architektur $(uname -m) nicht vorgesehen"; exit 1; }
           rc=0
           curl -fsSL --retry 3 --retry-delay 10 --retry-all-errors --connect-timeout 20 --max-time 300 \
             -o "/tmp/${tgz}" "https://github.com/anchore/syft/releases/download/v${v}/${tgz}" || rc=$?
           [ "${rc}" -eq 0 ] || { echo "::error::Syft-Download fehlgeschlagen (curl Exit ${rc})"; exit 1; }
-          echo "${sha}  /tmp/${tgz}" | sha256sum -c --quiet - || { echo "::error::Syft-Pruefsumme passt nicht"; exit 1; }
+          echo "${sha}  /tmp/${tgz}" | sha256sum -c --quiet - \
+            || { echo "::error::Syft-Pruefsumme passt nicht"; exit 1; }
           tar -xzf "/tmp/${tgz}" -C /usr/local/bin syft
           syft version
       - name: Arbeitsverzeichnis nicht leer
@@ -621,19 +659,91 @@ jobs:
           BEFEHL: ${{ inputs.lint_befehl }}
         run: |
           if [ -z "${BEFEHL}" ]; then
-            echo "Kein lint_befehl gesetzt: Lint laeuft in den repo-eigenen Workflows (Gesamtpruefung: gitea-pr-gruen.py --alle)."
+            echo "Kein lint_befehl gesetzt: Lint laeuft in den repo-eigenen Workflows" \
+              "(Gesamtpruefung: gitea-pr-gruen.py --alle)."
             exit 0
           fi
           bash -euo pipefail -c "${BEFEHL}"
       - name: Unit
         env:
           BEFEHL: ${{ inputs.test_befehl }}
+          TESTS_BEGRUENDUNG: ${{ inputs.tests_begruendung }}
+          TESTS_IN: ${{ inputs.tests_in }}
         run: |
-          if [ -z "${BEFEHL}" ]; then
-            echo "Kein test_befehl gesetzt: Tests laufen in den repo-eigenen Workflows (Gesamtpruefung: gitea-pr-gruen.py --alle)."
+          if [ -n "${BEFEHL}" ]; then
+            bash -euo pipefail -c "${BEFEHL}"
             exit 0
           fi
-          bash -euo pipefail -c "${BEFEHL}"
+          # Ohne test_befehl (Hermes 27.11.2026, devops .scratch/106-e2e-errors): bis dahin Exit 0, und in 106 und
+          # 104 lief so kein einziger Test. Jetzt: ein eigener Workflow mit Testaufruf auf push und pull_request,
+          # tests_in oder tests_begruendung, sonst rot. Gleiche Logik wie 106 scripts/suite_drift.py testlauf()
+          # (Test in 106 tests/unit/scripts/test_hub_testlauf.py).
+          python3 -c "import yaml" 2>/dev/null || python3 -m pip install --quiet PyYAML==6.0.4
+          python3 - <<'TESTLAUF'
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          import yaml
+
+          MUSTER = re.compile(
+              r"\b(pytest|unittest|tox|nox|vitest|jest|phpunit|bats)\b|\bnpm (run )?test\b|\bnode --test\b"
+              r"|\bplaywright test\b|\brun-tests\b|\bmolecule test\b|\bInvoke-Pester\b|\bgo test\b"
+              r"|\bcargo test\b")
+          begruendung = os.environ.get("TESTS_BEGRUENDUNG", "").strip()
+          tests_in = os.environ.get("TESTS_IN", "").strip()
+          if begruendung:
+              if len(begruendung) < 15:
+                  print("::error::tests_begruendung braucht mindestens 15 Zeichen")
+                  sys.exit(1)
+              print(f"tests: keine ({begruendung})")
+              sys.exit(0)
+          d = Path(".gitea/workflows") if Path(".gitea/workflows").is_dir() else Path(".github/workflows")
+
+
+          def code(run):
+              zeilen = run.splitlines()
+              return "\n".join("" if z.lstrip().startswith("#") else re.split(r"\s#", z, maxsplit=1)[0] for z in zeilen)
+
+
+          def ausloeser(wf):
+              on = wf.get("on", wf.get(True))
+              if isinstance(on, str):
+                  return {on: None}
+              if isinstance(on, list):
+                  return {k: None for k in on}
+              return on or {}
+
+
+          eigen = {"seraph-suite.yml", "seraph-suite-hub.yml"}
+          if os.environ.get("GITHUB_REPOSITORY", "").endswith("/106-devsecops"):
+              eigen.add("suite.yml")
+          namen = [tests_in] if tests_in else sorted(p.name for p in d.glob("*.y*ml"))
+          for n in namen:
+              if n in eigen or not (d / n).is_file():
+                  continue
+              try:
+                  wf = yaml.safe_load((d / n).read_text(encoding="utf-8")) or {}
+              except yaml.YAMLError:
+                  continue
+              if not isinstance(wf, dict):
+                  continue
+              on = ausloeser(wf)
+              if "push" not in on or "pull_request" not in on:
+                  continue
+              schritte = [s for j in (wf.get("jobs") or {}).values() for s in ((j or {}).get("steps") or [])]
+              if tests_in or any(MUSTER.search(code(str((s or {}).get("run", "")))) for s in schritte):
+                  print(f"Tests laufen in {d.as_posix()}/{n}" + (" (tests_in)" if tests_in else ""))
+                  sys.exit(0)
+          if tests_in:
+              print(f"::error::tests_in {tests_in}: fehlt in {d.as_posix()}"
+                    " oder laeuft nicht auf push und pull_request")
+          else:
+              print("::error::Kein Testlauf: kein test_befehl, kein Workflow mit Testaufruf auf push und"
+                    " pull_request, keine tests_begruendung")
+          sys.exit(1)
+          TESTLAUF
 
   # ------------------------------------------------------------------
   # Uploads: nur main und Nachtlauf (Befunde aus Branches bleiben im Lauf)
@@ -671,7 +781,8 @@ jobs:
           BRANCH: ${{ github.ref_name }}
         run: |
           set -uo pipefail
-          [ -n "${DD_URL:-}" ] && [ -n "${DD_TOKEN:-}" ] || { echo "::error::DEFECTDOJO_URL oder DEFECTDOJO_API_TOKEN fehlt"; exit 1; }
+          [ -n "${DD_URL:-}" ] && [ -n "${DD_TOKEN:-}" ] \
+            || { echo "::error::DEFECTDOJO_URL oder DEFECTDOJO_API_TOKEN fehlt"; exit 1; }
           berichte="
           semgrep-report.json|Semgrep JSON Report|Semgrep|sast-semgrep
           bandit-report.json|Bandit Scan|Bandit|sast-bandit
@@ -686,7 +797,8 @@ jobs:
             job="$(echo "${job}" | xargs)"
             ergebnis="$(printf '%s' "${NEEDS}" | jq -r --arg j "${job}" '.[$j].result // "fehlt"')"
             if [ "${ergebnis}" != "success" ]; then
-              echo "::error::${datei}: Job ${job} ist ${ergebnis}, Bericht nicht geladen (wuerde sonst Funde schliessen)"
+              echo "::error::${datei}: Job ${job} ist ${ergebnis}," \
+                "Bericht nicht geladen (wuerde sonst Funde schliessen)"
               fehler=$((fehler + 1)); continue
             fi
             pfad="$(find berichte -name "${datei}" -type f -print -quit 2>/dev/null)"
@@ -702,11 +814,13 @@ jobs:
                 Checkov) muster="*.tf"; platzhalter='type == "object" and (has("summary") | not)' ;;
                 *) muster=""; platzhalter='false' ;;
               esac
-              if [ -n "${muster}" ] && { grep -qx leer "${pfad}.vollstaendig" || jq -e "${platzhalter}" "${pfad}" > /dev/null; }; then
+              if [ -n "${muster}" ] \
+                 && { grep -qx leer "${pfad}.vollstaendig" || jq -e "${platzhalter}" "${pfad}" > /dev/null; }; then
                 quellen=$(git ls-files -- "${muster}" | wc -l)
                 if [ "${quellen}" -gt 0 ]; then
                   schliessen=false; fehler=$((fehler + 1))
-                  echo "::error::${datei}: leerer Bericht, aber ${quellen} Dateien ${muster} im Repo. DefectDojo schliesst nichts"
+                  echo "::error::${datei}: leerer Bericht, aber ${quellen} Dateien ${muster} im Repo." \
+                    "DefectDojo schliesst nichts"
                 fi
               fi
             else
@@ -745,14 +859,17 @@ jobs:
           DT_URL: ${{ secrets.DEPENDENCYTRACK_URL }}
           DT_KEY: ${{ secrets.DEPENDENCYTRACK_API_KEY }}
           PROJEKT: ${{ github.event.repository.name }}
+          # Version = Standardbranch (Hermes 26.11.2026: 301 laeuft auf master, vorher stand hier fest main).
+          VERSION: ${{ github.event.repository.default_branch || 'main' }}
         run: |
           set -uo pipefail
-          [ -n "${DT_URL:-}" ] && [ -n "${DT_KEY:-}" ] || { echo "::error::DEPENDENCYTRACK_URL oder _API_KEY fehlt"; exit 1; }
+          [ -n "${DT_URL:-}" ] && [ -n "${DT_KEY:-}" ] \
+            || { echo "::error::DEPENDENCYTRACK_URL oder _API_KEY fehlt"; exit 1; }
           pfad="$(find . -name sbom-cyclonedx.json -type f -print -quit)"
           [ -s "${pfad:-}" ] || { echo "::error::kein SBOM-Artefakt"; exit 1; }
           http=$(curl -sS -o /tmp/dt.json -w '%{http_code}' -X POST "${DT_URL}/api/v1/bom" \
-            -H "X-Api-Key: ${DT_KEY}" -F "autoCreate=true" -F "projectName=${PROJEKT}" \
-            -F "projectVersion=main" -F "bom=@${pfad}") || http=000
+            -H "X-Api-Key: ${DT_KEY}" -F "autoCreate=true" --form-string "projectName=${PROJEKT}" \
+            --form-string "projectVersion=${VERSION}" -F "bom=@${pfad}") || http=000
           if [ "${http}" = 200 ] || [ "${http}" = 201 ]; then echo "DT HTTP ${http}"; else
             echo "::error::Dependency-Track HTTP ${http}"; head -c 600 /tmp/dt.json; echo; exit 1; fi
 
