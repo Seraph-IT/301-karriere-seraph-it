@@ -3,7 +3,7 @@ title: "Backend-Engineer Python / ERPNext"
 date: "2026-06-06"
 slug: "backend-engineer-python"
 department: "Engineering"
-location: "Düsseldorf / Remote"
+location: "Köln / Remote"
 employment_type: "Vollzeit"
 status: "Active"
 pipeline_template: "B_Junior_Mid_Direktbewerbung"
@@ -29,7 +29,7 @@ Remote-first, asynchrone Kommunikation, hohe Code-Qualität (100% Type-Annotatio
 
 ## Was wir bieten
 
-- Vollständig remote oder Hybrid (Düsseldorf)
+- Vollständig remote oder Hybrid (Köln)
 - Direkte Mitarbeit an echten Produktionssystemen ab Tag 1
 - Pair-Programming-Kultur, kein Code-Reviews-Theater
 - Open-Source-Anteil: Frappe-Upstream-Contributions erwünscht

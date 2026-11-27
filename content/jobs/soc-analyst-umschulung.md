@@ -3,7 +3,7 @@ title: "SOC-Analyst (Umschulung / Quereinstieg)"
 date: "2026-06-06"
 slug: "soc-analyst-umschulung"
 department: "SOC"
-location: "Düsseldorf / Remote"
+location: "Köln / Remote"
 employment_type: "Vollzeit"
 status: "Active"
 pipeline_template: "A_Umschulung_Praktikum_Festanstellung"
@@ -33,5 +33,5 @@ und Incident-Response-Playbooks.
 - Vollzeit-Anstellung ab Tag 1 (kein Praktikum ohne Übernahme-Garantie)
 - Strukturiertes Umschulungsprogramm mit Zertifizierungsbudget (CompTIA Security+, SC-200)
 - Mentoring durch Senior-SOC-Analysten
-- Remote-first: 3 Tage Home-Office, 2 Tage Düsseldorf
+- Remote-first: 3 Tage Home-Office, 2 Tage Köln
 - Gehalt während Umschulung: 32.000–38.000 EUR/Jahr; nach Vollqualifikation: 42.000–52.000 EUR/Jahr
