@@ -75,9 +75,16 @@ jobs:
   # ------------------------------------------------------------------
   # Secrets: blockierend fuer die neuen Commits, Bericht ueber die ganze Historie
   # ------------------------------------------------------------------
+  # timeout-minutes je Job (Hermes 28.11.2026, ADR-ci-0005, gefunden mit 420 test_workflow_timeouts.py):
+  # 95. Perzentil der Laufzeit aus 40 erfolgreichen Suite-Laeufen in 10 Repos (Log: docker create bis
+  # Cleaning up network) mal 3, mindestens 10 Minuten. Alle lagen darunter (Semgrep p95 136 s, Checkov 79 s,
+  # qualitaet 68 s). Nach oben: sca-trivy und iac-trivy-config 25, weil der Trivy-Schritt selbst bis 900 s
+  # (DB-Download) plus 300 s Installation darf; qualitaet 30, weil dort der test_befehl des Aufrufers laeuft
+  # und die Messung nur 10 Repos sah. Test: tests/unit/scripts/test_seraph_suite.py.
   secrets-gitleaks:
     name: Secrets (Gitleaks)
     runs-on: [self-hosted, gitea-runner]
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -153,6 +160,7 @@ jobs:
   sast-semgrep:
     name: SAST (Semgrep)
     runs-on: [self-hosted, gitea-runner]
+    timeout-minutes: 10
     # Image statt pip install in jedem Lauf (Hermes 27.11.2026): das ganze Semgrep ging je Job auf die Docker-Platte,
     # Anlass fuer Abbrueche an der Aufraeumgrenze auf Run-002/Run-004. ci-security (042 ci-images/security) bringt
     # Semgrep 1.172.0, dieselbe Version wie bisher; der erste Schritt bricht ab, wenn sie abweicht.
@@ -357,6 +365,7 @@ jobs:
   sast-bandit:
     name: SAST (Bandit)
     runs-on: [self-hosted, gitea-runner]
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -413,6 +422,7 @@ jobs:
   sca-trivy:
     name: SCA (Trivy)
     runs-on: [self-hosted, gitea-runner]
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - name: Install Trivy v0.72.0
@@ -475,9 +485,59 @@ jobs:
             trivy-fs-report.json
             trivy-fs-report.json.vollstaendig
 
+  sca-kritisch:
+    name: SCA kritisch (blockierend)
+    runs-on: [self-hosted, gitea-runner]
+    timeout-minutes: 10
+    # Hermes 27.11.2026: kritische Abhaengigkeitsluecken machen die Suite rot, alles andere bleibt Bericht. Anlass:
+    # Astro < 7.2.8 (GHSA-26w7-cxv4-gfx2, RCE) lief in 300 ab dem 26.11. durch die Suite, ohne dass etwas rot wurde.
+    # Eigener Job statt --exit-code 1 in sca-trivy: upload-defectdojo laedt nur Berichte von Jobs mit success. Ein
+    # roter sca-trivy wuerde gerade den kritischen Fund an DefectDojo und damit am P1-Ticket vorbeischicken.
+    # Ein bewusst getragener Fund kommt mit Begruendung in .trivyignore des Repos, Trivy laesst ihn dann im Bericht weg.
+    # Vor dem Einschalten am 27.11.2026 gemessen (Trivy 0.72.0, 60 Repos): CRITICAL nur in 100 (certifi) und 631
+    # (pillow), beide behoben (100 #118, 631 #6).
+    needs: [sca-trivy]
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: trivy-fs-report
+          path: bericht
+      - name: Kritische Funde (blockierend)
+        env:
+          # Spiegel von ci-templates/kritisch-ausnahmen.yml (repo|grund|ticket|bis), der Test haelt beide gleich.
+          # Ein Repo auf der Liste bleibt bis zur Frist gruen mit Warnung, danach rot.
+          AUSNAHMEN: |
+            631-angebotdirekt|Kundensystem, Entscheidung Georgij|.scratch/631-pillow-kundensystem/issue.md|2026-12-11
+        run: |
+          set -euo pipefail
+          repo="${GITHUB_REPOSITORY##*/}"
+          pfad="$(find bericht -name trivy-fs-report.json -type f -print -quit)"
+          [ -n "${pfad}" ] && [ -s "${pfad}" ] || { echo "::error::trivy-fs-report.json fehlt im Artefakt"; exit 1; }
+          jq -e . "${pfad}" > /dev/null || { echo "::error::trivy-fs-report.json ist kein gueltiges JSON"; exit 1; }
+          jq -r '[.Results[]? | .Target as $t | .Vulnerabilities[]? | select(.Severity == "CRITICAL")
+                 | "\($t): \(.PkgName) \(.InstalledVersion) \(.VulnerabilityID), behoben in \(.FixedVersion // "-")"]
+                 | unique | .[]' "${pfad}" > kritisch.txt
+          n=$(wc -l < kritisch.txt)
+          if [ "${n}" -gt 0 ]; then
+            cat kritisch.txt
+            eintrag="$(printf '%s\n' "${AUSNAHMEN}" | awk -F'|' -v r="${repo}" '$1 == r {print; exit}')"
+            if [ -n "${eintrag}" ]; then
+              IFS='|' read -r _ grund ticket bis <<< "${eintrag}"
+              if [[ "$(date -u +%F)" < "${bis}" || "$(date -u +%F)" == "${bis}" ]]; then
+                echo "::warning::${n} kritische Abhaengigkeitsluecke(n), Ausnahme bis ${bis}: ${grund} (${ticket})"
+                exit 0
+              fi
+              echo "::error::Ausnahme fuer ${repo} am ${bis} abgelaufen (${ticket})."
+            fi
+            echo "::error::${n} kritische Abhaengigkeitsluecke(n). Beheben oder mit Begruendung in .trivyignore."
+            exit 1
+          fi
+          echo "keine kritischen Abhaengigkeitsluecken"
+
   iac-trivy-config:
     name: IaC (Trivy-config)
     runs-on: [self-hosted, gitea-runner]
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - name: Install Trivy v0.72.0
@@ -545,6 +605,7 @@ jobs:
   iac-checkov:
     name: IaC (Checkov)
     runs-on: [self-hosted, gitea-runner]
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -593,6 +654,7 @@ jobs:
   sbom-syft:
     name: SBOM (Syft + CycloneDX)
     runs-on: [self-hosted, gitea-runner]
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: Install syft v1.33.0
@@ -640,6 +702,7 @@ jobs:
   qualitaet:
     name: Qualitaet (Lint + Unit)
     runs-on: [self-hosted, gitea-runner]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -751,6 +814,7 @@ jobs:
   upload-defectdojo:
     name: Findings → DefectDojo
     runs-on: [self-hosted, gitea-runner]
+    timeout-minutes: 10
     needs: [secrets-gitleaks, sast-semgrep, sast-bandit, sca-trivy, iac-trivy-config, iac-checkov]
     # Standardbranch statt fest main (Hermes 25.11.2026, 301 laeuft auf master). Fehlt er im Ereignis: main.
     if: always() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch || 'main')
@@ -847,6 +911,7 @@ jobs:
   upload-dependencytrack:
     name: SBOM → Dependency-Track
     runs-on: [self-hosted, gitea-runner]
+    timeout-minutes: 10
     needs: [sbom-syft]
     if: always() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch || 'main')
     steps:
@@ -879,8 +944,9 @@ jobs:
   suite-ergebnis:
     name: suite-ergebnis
     runs-on: [self-hosted, gitea-runner]
-    needs: [secrets-gitleaks, sast-semgrep, sast-bandit, sca-trivy, iac-trivy-config, iac-checkov, sbom-syft,
-            qualitaet, upload-defectdojo, upload-dependencytrack]
+    timeout-minutes: 10
+    needs: [secrets-gitleaks, sast-semgrep, sast-bandit, sca-trivy, sca-kritisch, iac-trivy-config, iac-checkov,
+            sbom-syft, qualitaet, upload-defectdojo, upload-dependencytrack]
     if: always()
     steps:
       - name: Ergebnisse auswerten
@@ -902,7 +968,7 @@ jobs:
               print(f"{'ok ' if ok else 'ROT'} {job}: {r}")
               if not ok:
                   rot.append(f"{job}={r}")
-          erwartet = 10
+          erwartet = 11
           if len(needs) != erwartet:
               rot.append(f"needs hat {len(needs)} statt {erwartet} Eintraege")
           if rot:
